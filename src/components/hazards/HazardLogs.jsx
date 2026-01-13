@@ -1,50 +1,7 @@
 import { useState, useMemo } from 'react';
 import { AlertTriangle, Search, Download } from 'lucide-react';
-import { format } from 'date-fns';
-
-// Mock hazard data - replace with actual API data
-const mockHazards = [
-  {
-    id: 1,
-    type: 'Fire Hazard',
-    severity: 'High',
-    location: 'Warehouse - Section A',
-    channel: 'Channel 3',
-    timestamp: new Date('2024-01-15T10:30:00'),
-    status: 'Active',
-    description: 'Smoke detected in warehouse section A',
-  },
-  {
-    id: 2,
-    type: 'Unauthorized Access',
-    severity: 'Medium',
-    location: 'Main Entrance',
-    channel: 'Channel 1',
-    timestamp: new Date('2024-01-15T09:15:00'),
-    status: 'Resolved',
-    description: 'Unauthorized person detected at main entrance',
-  },
-  {
-    id: 3,
-    type: 'Spill Hazard',
-    severity: 'High',
-    location: 'Loading Dock',
-    channel: 'Channel 4',
-    timestamp: new Date('2024-01-15T08:45:00'),
-    status: 'Active',
-    description: 'Liquid spill detected on loading dock',
-  },
-  {
-    id: 4,
-    type: 'Equipment Malfunction',
-    severity: 'Low',
-    location: 'Parking Lot',
-    channel: 'Channel 2',
-    timestamp: new Date('2024-01-15T07:20:00'),
-    status: 'Resolved',
-    description: 'Equipment malfunction detected',
-  },
-];
+import { format, parse } from 'date-fns';
+import { useLogs } from '../../hooks/useLogs';
 
 const severityColors = {
   High: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
@@ -58,12 +15,49 @@ const statusColors = {
 };
 
 const HazardLogs = () => {
+  const { hazards, loading, error } = useLogs();
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
+  // Transform log hazards to match table structure
+  const formattedHazards = useMemo(() => {
+    return hazards.map((hazard) => {
+      // Parse timestamp - format: "2026-01-12 20:59:46,212"
+      let timestamp = new Date();
+      try {
+        const normalizedTimestamp = hazard.timestamp.replace(',', '.');
+        timestamp = new Date(normalizedTimestamp);
+        if (isNaN(timestamp.getTime())) {
+          // Fallback parsing
+          const timeMatch = hazard.timestamp.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+          if (timeMatch) {
+            timestamp = parse(`${timeMatch[1]} ${timeMatch[2]}`, 'yyyy-MM-dd HH:mm:ss', new Date());
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse timestamp:', hazard.timestamp);
+      }
+
+      // Capitalize severity
+      const severity = hazard.severity.charAt(0).toUpperCase() + hazard.severity.slice(1).toLowerCase();
+
+      return {
+        id: hazard.id,
+        type: hazard.type,
+        severity,
+        location: 'CCTV Feed', // Default location since logs don't have location
+        channel: 'Channel 1', // Default channel since logs don't have channel info
+        timestamp,
+        status: 'Active', // All detected hazards are active by default
+        description: hazard.description,
+        confidence: hazard.confidence,
+      };
+    });
+  }, [hazards]);
+
   const filteredHazards = useMemo(() => {
-    return mockHazards.filter((hazard) => {
+    return formattedHazards.filter((hazard) => {
       const matchesSearch =
         hazard.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
         hazard.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -72,7 +66,7 @@ const HazardLogs = () => {
       const matchesStatus = statusFilter === 'All' || hazard.status === statusFilter;
       return matchesSearch && matchesSeverity && matchesStatus;
     });
-  }, [searchTerm, severityFilter, statusFilter]);
+  }, [formattedHazards, searchTerm, severityFilter, statusFilter]);
 
   return (
     <div className="space-y-4">
@@ -83,10 +77,28 @@ const HazardLogs = () => {
             Hazard Logs
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            View and manage detected hazards
+            {loading
+              ? 'Loading hazards...'
+              : `${hazards.length} hazard${hazards.length !== 1 ? 's' : ''} detected`}
+            {filteredHazards.length !== hazards.length &&
+              ` (${filteredHazards.length} shown)`}
           </p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition">
+        <button
+          onClick={() => {
+            // Export functionality - can be implemented later
+            const dataStr = JSON.stringify(filteredHazards, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `hazard-logs-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition"
+          disabled={loading || filteredHazards.length === 0}
+        >
           <Download size={18} />
           Export Logs
         </button>
@@ -113,10 +125,10 @@ const HazardLogs = () => {
             onChange={(e) => setSeverityFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
-            <option>All Severities</option>
-            <option>High</option>
-            <option>Medium</option>
-            <option>Low</option>
+            <option value="All">All Severities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
           </select>
 
           {/* Status Filter */}
@@ -125,101 +137,126 @@ const HazardLogs = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
-            <option>All Statuses</option>
-            <option>Active</option>
-            <option>Resolved</option>
+            <option value="All">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Resolved">Resolved</option>
           </select>
         </div>
       </div>
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Severity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Location
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Channel
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Timestamp
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Description
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
-              {filteredHazards.length === 0 ? (
+        {loading ? (
+          <div className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+            Loading hazards...
+          </div>
+        ) : error ? (
+          <div className="px-6 py-12 text-center text-red-500 dark:text-red-400">
+            Error loading hazards: {error}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No hazards found
-                  </td>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Severity
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Location
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Channel
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Description
+                  </th>
                 </tr>
-              ) : (
-                filteredHazards.map((hazard) => (
-                  <tr
-                    key={hazard.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <AlertTriangle
-                          className="text-red-500 mr-2"
-                          size={18}
-                        />
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">
-                          {hazard.type}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${severityColors[hazard.severity]}`}
-                      >
-                        {hazard.severity}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {hazard.location}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {hazard.channel}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {format(hazard.timestamp, 'MMM dd, yyyy HH:mm:ss')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div
-                          className={`w-2 h-2 rounded-full mr-2 ${statusColors[hazard.status]}`}
-                        />
-                        <span className="text-sm text-gray-900 dark:text-white">
-                          {hazard.status}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                      {hazard.description}
+              </thead>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
+                {filteredHazards.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                      {searchTerm || severityFilter !== 'All' || statusFilter !== 'All'
+                        ? 'No hazards match your filters'
+                        : 'No hazards detected yet'}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredHazards.map((hazard) => (
+                    <tr
+                      key={hazard.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <AlertTriangle
+                            className={`mr-2 ${
+                              hazard.severity === 'High'
+                                ? 'text-red-500'
+                                : hazard.severity === 'Medium'
+                                ? 'text-yellow-500'
+                                : 'text-orange-500'
+                            }`}
+                            size={18}
+                          />
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {hazard.type}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`px-2 py-1 text-xs font-semibold rounded-full ${severityColors[hazard.severity] || severityColors.Low}`}
+                        >
+                          {hazard.severity}
+                        </span>
+                        {hazard.confidence && (
+                          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                            ({hazard.confidence}%)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {hazard.location}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {hazard.channel}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {format(hazard.timestamp, 'MMM dd, yyyy HH:mm:ss')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div
+                            className={`w-2 h-2 rounded-full mr-2 ${statusColors[hazard.status] || statusColors.Active}`}
+                          />
+                          <span className="text-sm text-gray-900 dark:text-white">
+                            {hazard.status}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                        <div className="truncate" title={hazard.description}>
+                          {hazard.description}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
