@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   CCTV_STREAM: '/cctv/stream',
   VIDEO: '/video',
   SETTINGS: '/settings',
+  LOGS: '/logs',
 };
 
 export const WS_ENDPOINTS = {

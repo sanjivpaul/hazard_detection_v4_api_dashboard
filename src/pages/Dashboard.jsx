@@ -1,13 +1,17 @@
 import { AlertTriangle, Video, Activity, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useLogs } from '../hooks/useLogs';
+import { format } from 'date-fns';
 
 const Dashboard = () => {
-  // Mock statistics
+  const { hazards, loading: hazardsLoading } = useLogs();
+
+  // Calculate statistics from real data
   const stats = [
     {
       title: 'Active Hazards',
-      value: '3',
-      change: '+2 from yesterday',
+      value: hazards.length.toString(),
+      change: hazards.length > 0 ? `${hazards.filter(h => h.severity.toLowerCase() === 'high').length} high severity` : 'No active hazards',
       icon: AlertTriangle,
       color: 'text-red-600 dark:text-red-400',
       bgColor: 'bg-red-100 dark:bg-red-900/30',
@@ -22,8 +26,8 @@ const Dashboard = () => {
     },
     {
       title: 'Total Detections',
-      value: '127',
-      change: '+12% this week',
+      value: hazards.length.toString(),
+      change: hazards.length > 0 ? `Latest: ${hazards[0]?.type || 'N/A'}` : 'No detections yet',
       icon: Activity,
       color: 'text-green-600 dark:text-green-400',
       bgColor: 'bg-green-100 dark:bg-green-900/30',
@@ -38,29 +42,51 @@ const Dashboard = () => {
     },
   ];
 
-  const recentHazards = [
-    {
-      id: 1,
-      type: 'Fire Hazard',
-      location: 'Warehouse - Section A',
-      time: '10:30 AM',
-      severity: 'High',
-    },
-    {
-      id: 2,
-      type: 'Spill Hazard',
-      location: 'Loading Dock',
-      time: '8:45 AM',
-      severity: 'High',
-    },
-    {
-      id: 3,
-      type: 'Unauthorized Access',
-      location: 'Main Entrance',
-      time: '9:15 AM',
-      severity: 'Medium',
-    },
-  ];
+  // Format recent hazards from logs (show latest 5)
+  const recentHazards = hazards.slice(0, 5).map((hazard) => {
+    // Parse timestamp and format time
+    // Timestamp format: "2026-01-12 20:59:46,212"
+    let timeStr = 'Unknown';
+    try {
+      // Replace comma with dot for milliseconds, then parse
+      const normalizedTimestamp = hazard.timestamp.replace(',', '.');
+      const date = new Date(normalizedTimestamp);
+      
+      if (!isNaN(date.getTime())) {
+        timeStr = format(date, 'h:mm a');
+      } else {
+        // Fallback: extract time directly from string
+        const timeMatch = hazard.timestamp.match(/(\d{2}):(\d{2}):(\d{2})/);
+        if (timeMatch) {
+          const [, hours, minutes] = timeMatch;
+          const hour12 = parseInt(hours) % 12 || 12;
+          const ampm = parseInt(hours) >= 12 ? 'PM' : 'AM';
+          timeStr = `${hour12}:${minutes} ${ampm}`;
+        }
+      }
+    } catch (e) {
+      // If all parsing fails, try to extract time from timestamp string
+      const timeMatch = hazard.timestamp.match(/(\d{2}):(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        const [, hours, minutes] = timeMatch;
+        const hour12 = parseInt(hours) % 12 || 12;
+        const ampm = parseInt(hours) >= 12 ? 'PM' : 'AM';
+        timeStr = `${hour12}:${minutes} ${ampm}`;
+      }
+    }
+
+    // Capitalize severity properly
+    const severity = hazard.severity.charAt(0).toUpperCase() + hazard.severity.slice(1).toLowerCase();
+
+    return {
+      id: hazard.id,
+      type: hazard.type,
+      description: hazard.description,
+      time: timeStr,
+      severity,
+      confidence: hazard.confidence,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -121,41 +147,66 @@ const Dashboard = () => {
             </Link>
           </div>
           <div className="space-y-3">
-            {recentHazards.map((hazard) => (
-              <div
-                key={hazard.id}
-                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle
-                    className="text-red-500"
-                    size={20}
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {hazard.type}
-                    </p>
+            {hazardsLoading ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                Loading hazards...
+              </div>
+            ) : recentHazards.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                No hazards detected yet
+              </div>
+            ) : (
+              recentHazards.map((hazard) => (
+                <div
+                  key={hazard.id}
+                  className="flex items-start justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  <div className="flex items-start gap-3 flex-1">
+                    <AlertTriangle
+                      className={`mt-0.5 ${
+                        hazard.severity.toLowerCase() === 'high'
+                          ? 'text-red-500'
+                          : hazard.severity.toLowerCase() === 'medium'
+                          ? 'text-yellow-500'
+                          : 'text-orange-500'
+                      }`}
+                      size={20}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {hazard.type}
+                      </p>
+                      {hazard.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                          {hazard.description}
+                        </p>
+                      )}
+                      {hazard.confidence && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                          Confidence: {hazard.confidence}%
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right ml-3 flex-shrink-0">
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {hazard.location}
+                      {hazard.time}
                     </p>
+                    <span
+                      className={`text-xs font-semibold inline-block mt-1 ${
+                        hazard.severity.toLowerCase() === 'high'
+                          ? 'text-red-600 dark:text-red-400'
+                          : hazard.severity.toLowerCase() === 'medium'
+                          ? 'text-yellow-600 dark:text-yellow-400'
+                          : 'text-orange-600 dark:text-orange-400'
+                      }`}
+                    >
+                      {hazard.severity}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {hazard.time}
-                  </p>
-                  <span
-                    className={`text-xs font-semibold ${
-                      hazard.severity === 'High'
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-yellow-600 dark:text-yellow-400'
-                    }`}
-                  >
-                    {hazard.severity}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
