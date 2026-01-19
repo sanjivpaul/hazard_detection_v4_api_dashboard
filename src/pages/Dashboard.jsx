@@ -1,10 +1,23 @@
-import { AlertTriangle, Video, Activity, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Video, Activity, TrendingUp, Clock, Play, Power } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLogs } from '../hooks/useLogs';
+import { useDetectionInterval, DETECTION_INTERVAL_LABELS } from '../hooks/useDetectionInterval';
 import { format } from 'date-fns';
 
 const Dashboard = () => {
   const { hazards, loading: hazardsLoading } = useLogs();
+  const {
+    interval: detectionInterval,
+    setInterval: setDetectionInterval,
+    isEnabled: detectionEnabled,
+    setIsEnabled: setDetectionEnabled,
+    isDetecting,
+    lastDetection,
+    error: detectionError,
+    manualTrigger,
+    intervalLabel,
+    availableIntervals,
+  } = useDetectionInterval();
 
   // Calculate statistics from real data
   const stats = [
@@ -33,12 +46,18 @@ const Dashboard = () => {
       bgColor: 'bg-green-100 dark:bg-green-900/30',
     },
     {
-      title: 'System Uptime',
-      value: '99.8%',
-      change: 'Last 30 days',
-      icon: TrendingUp,
-      color: 'text-purple-600 dark:text-purple-400',
-      bgColor: 'bg-purple-100 dark:bg-purple-900/30',
+      title: 'Detection Interval',
+      value: detectionEnabled ? intervalLabel : 'Disabled',
+      change: detectionEnabled
+        ? lastDetection
+          ? `Last: ${format(lastDetection, 'h:mm a')}`
+          : isDetecting
+          ? 'Detecting...'
+          : 'Not started'
+        : 'Detection is disabled',
+      icon: Clock,
+      color: detectionEnabled ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-500',
+      bgColor: detectionEnabled ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-gray-100 dark:bg-gray-800/50',
     },
   ];
 
@@ -210,39 +229,145 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Detection Control */}
         <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Quick Actions
-          </h2>
-          <div className="space-y-3">
-            <Link
-              to="/cctv"
-              className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Detection Control
+            </h2>
+            {/* Enable/Disable Toggle */}
+            <button
+              onClick={() => setDetectionEnabled(!detectionEnabled)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                detectionEnabled
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
             >
-              <Video className="text-primary-600 dark:text-primary-400" size={20} />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                View CCTV Feeds
+              <Power size={18} className={detectionEnabled ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-500'} />
+              <span className="text-sm font-medium">
+                {detectionEnabled ? 'Enabled' : 'Disabled'}
               </span>
-            </Link>
-            <Link
-              to="/hazards"
-              className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            </button>
+          </div>
+          
+          {/* Detection Interval Selector */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Detection Interval
+              </label>
+              <select
+                value={detectionInterval}
+                onChange={(e) => setDetectionInterval(e.target.value)}
+                disabled={isDetecting || !detectionEnabled}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {availableIntervals.map((intervalKey) => (
+                  <option key={intervalKey} value={intervalKey}>
+                    {DETECTION_INTERVAL_LABELS[intervalKey]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {!detectionEnabled
+                  ? 'Detection is disabled. Enable to start automatic detection.'
+                  : detectionInterval === 'auto'
+                  ? 'Automatic detection based on system settings'
+                  : `Hazards will be detected every ${intervalLabel.toLowerCase()}`}
+              </p>
+            </div>
+
+            {/* Current Status */}
+            <div className={`p-3 rounded-lg ${
+              detectionEnabled 
+                ? 'bg-gray-50 dark:bg-gray-800' 
+                : 'bg-gray-100 dark:bg-gray-800/50'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Status</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
+                    {detectionEnabled ? (
+                      <>
+                        <span className="text-green-600 dark:text-green-400">Active</span>
+                        <span className="text-gray-500 dark:text-gray-400 ml-2">• {intervalLabel}</span>
+                      </>
+                    ) : (
+                      <span className="text-gray-500 dark:text-gray-400">Inactive</span>
+                    )}
+                  </p>
+                </div>
+                {isDetecting && (
+                  <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+                    <span className="text-xs">Detecting...</span>
+                  </div>
+                )}
+              </div>
+              {lastDetection && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Last detection: {format(lastDetection, 'MMM dd, yyyy h:mm:ss a')}
+                </p>
+              )}
+              {detectionError && (
+                <p className="text-xs text-red-500 dark:text-red-400 mt-2">
+                  Error: {detectionError}
+                </p>
+              )}
+            </div>
+
+            {/* Manual Trigger Button */}
+            <button
+              onClick={manualTrigger}
+              disabled={isDetecting || !detectionEnabled}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <AlertTriangle className="text-red-500" size={20} />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                View Hazard Logs
+              <Play size={18} />
+              <span>
+                {isDetecting 
+                  ? 'Detecting...' 
+                  : !detectionEnabled
+                  ? 'Enable Detection to Trigger'
+                  : 'Trigger Detection Now'}
               </span>
-            </Link>
-            <Link
-              to="/settings"
-              className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-            >
-              <Activity className="text-primary-600 dark:text-primary-400" size={20} />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                System Settings
-              </span>
-            </Link>
+            </button>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+              Quick Actions
+            </h3>
+            <div className="space-y-2">
+              <Link
+                to="/cctv"
+                className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              >
+                <Video className="text-primary-600 dark:text-primary-400" size={18} />
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  View CCTV Feeds
+                </span>
+              </Link>
+              <Link
+                to="/hazards"
+                className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              >
+                <AlertTriangle className="text-red-500" size={18} />
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  View Hazard Logs
+                </span>
+              </Link>
+              <Link
+                to="/settings"
+                className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              >
+                <Activity className="text-primary-600 dark:text-primary-400" size={18} />
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  System Settings
+                </span>
+              </Link>
+            </div>
           </div>
         </div>
       </div>

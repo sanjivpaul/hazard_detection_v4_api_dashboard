@@ -33,6 +33,8 @@ const getApiUrl = (endpoint) => {
  */
 const apiRequest = async (endpoint, options = {}) => {
   const url = getApiUrl(endpoint);
+  console.log('API Request:', { method: options.method || 'GET', url, endpoint });
+  
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -43,14 +45,33 @@ const apiRequest = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(url, config);
+    console.log('API Response status:', response.status, response.statusText);
     
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('API Error response:', errorText);
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
     }
     
-    return await response.json();
+    // Check if response has content
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      console.log('API Response data:', data);
+      return data;
+    } else {
+      // Some endpoints might return empty or non-JSON responses
+      const text = await response.text();
+      console.log('API Response text:', text);
+      return text || { success: true };
+    }
   } catch (error) {
-    console.error('API Request failed:', error);
+    console.error('API Request failed:', {
+      url,
+      endpoint,
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };
@@ -87,4 +108,21 @@ export const settingsAPI = {
  */
 export const logsAPI = {
   getAll: () => apiRequest('/logs'),
+};
+
+/**
+ * Detection API methods
+ */
+export const detectionAPI = {
+  detect: async () => {
+    console.log('detectionAPI.detect() called');
+    try {
+      const result = await apiRequest('/detect', { method: 'POST' });
+      console.log('detectionAPI.detect() success:', result);
+      return result;
+    } catch (error) {
+      console.error('detectionAPI.detect() error:', error);
+      throw error;
+    }
+  },
 };

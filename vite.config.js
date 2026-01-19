@@ -18,6 +18,20 @@ export default defineConfig({
           });
         },
       },
+      // Proxy for static files (images)
+      '/static': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/static/, ''),
+      },
+      // Proxy for incidents images
+      '/incidents': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        // Don't rewrite - pass /incidents/* as-is to backend
+      },
     },
   },
 })

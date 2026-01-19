@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   VIDEO: '/video',
   SETTINGS: '/settings',
   LOGS: '/logs',
+  DETECT: '/detect',
 };
 
 export const WS_ENDPOINTS = {
