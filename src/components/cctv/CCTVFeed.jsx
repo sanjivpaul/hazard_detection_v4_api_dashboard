@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause, Maximize2, Volume2, VolumeX } from 'lucide-react';
 import { WS_BASE_URL, WS_ENDPOINTS } from '../../utils/constants';
 
-const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval = 500, useWebSocket = false, wsUrl }) => {
+const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval = 500, useWebSocket = false, wsUrl, cameraId }) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState(null);
@@ -15,23 +15,105 @@ const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
+  const isIntentionallyClosingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const useWebSocketRef = useRef(useWebSocket);
+  const cameraIdRef = useRef(cameraId);
+  const wsUrlRef = useRef(wsUrl);
+  const isPlayingRef = useRef(isPlaying);
+  
+  // Debug: Log props on mount
+  useEffect(() => {
+    console.log('CCTVFeed mounted/updated:', {
+      channelName,
+      cameraId,
+      useWebSocket,
+      wsUrl,
+      isPlaying
+    });
+  }, [channelName, cameraId, useWebSocket, wsUrl, isPlaying]);
+  
+  // Keep refs in sync with props and state
+  useEffect(() => {
+    useWebSocketRef.current = useWebSocket;
+    cameraIdRef.current = cameraId;
+    wsUrlRef.current = wsUrl;
+    isPlayingRef.current = isPlaying;
+    console.log('Refs updated:', {
+      useWebSocket: useWebSocketRef.current,
+      cameraId: cameraIdRef.current,
+      wsUrl: wsUrlRef.current,
+      isPlaying: isPlayingRef.current
+    });
+  }, [useWebSocket, cameraId, wsUrl, isPlaying]);
   
   // Auto-detect MJPEG or force based on streamType
   const shouldUseMJPEG = streamType === 'mjpeg' || 
                          streamType === 'auto' && (useMJPEG || streamUrl.includes('mjpeg') || streamUrl.includes('multipart') || streamUrl.includes('image/jpeg'));
 
-  // WebSocket connection management
-  const connectWebSocket = useCallback(() => {
-    if (!useWebSocket) return;
+  // WebSocket connection management - defined as a stable function
+  const connectWebSocket = useRef(() => {
+    // Don't connect if already connected or if conditions aren't met
+    // Check current state values directly since this is called from useEffect
+    if (!useWebSocketRef.current) {
+      return;
+    }
+    
+    // If already connected, don't create a new connection
+    if (wsRef.current) {
+      const readyState = wsRef.current.readyState;
+      if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+        console.log('WebSocket already connected/connecting, skipping...', readyState);
+        return;
+      }
+    }
+    
+    // Close existing connection if it exists (in any state)
+    if (wsRef.current) {
+      isIntentionallyClosingRef.current = true;
+      try {
+        wsRef.current.close();
+      } catch (e) {
+        // Ignore errors when closing
+      }
+      wsRef.current = null;
+    }
 
-    const wsEndpoint = wsUrl || `${WS_BASE_URL}${WS_ENDPOINTS.VIDEO}`;
+    // Build WebSocket URL with camera_id parameter
+    let wsEndpoint;
+    if (wsUrlRef.current) {
+      wsEndpoint = wsUrlRef.current;
+    } else if (cameraIdRef.current) {
+      // Use the new format: /ws/video/{camera_id}
+      wsEndpoint = `${WS_BASE_URL}${WS_ENDPOINTS.VIDEO}/${cameraIdRef.current}`;
+    } else {
+      // Don't connect without camera_id - it will result in 403
+      console.error('Cannot connect WebSocket: cameraId is missing!', {
+        cameraId: cameraIdRef.current,
+        cameraIdProp: cameraId,
+        useWebSocket: useWebSocketRef.current
+      });
+      setError('Camera ID is required for WebSocket connection');
+      return;
+    }
+    
+    console.log('Connecting to WebSocket:', wsEndpoint, {
+      cameraId: cameraIdRef.current,
+      baseUrl: WS_BASE_URL,
+      endpoint: WS_ENDPOINTS.VIDEO
+    });
     
     try {
       const ws = new WebSocket(wsEndpoint);
       wsRef.current = ws;
+      isIntentionallyClosingRef.current = false;
 
       ws.onopen = () => {
-        console.log('WebSocket connected:', wsEndpoint);
+        if (!isMountedRef.current) {
+          ws.close();
+          return;
+        }
+        console.log('WebSocket connected successfully:', wsEndpoint);
         setWsConnected(true);
         setError(null);
         reconnectAttemptsRef.current = 0;
@@ -43,6 +125,8 @@ const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval
       };
 
       ws.onmessage = (event) => {
+        if (!isMountedRef.current) return;
+        
         if (event.data instanceof Blob) {
           // Handle binary data (JPEG frames)
           const blob = event.data;
@@ -60,7 +144,6 @@ const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval
           // Handle text data (base64 encoded images)
           try {
             const data = JSON.parse(event.data);
-            console.log('WebSocket message received:', { type: data.type, hasImage: !!data.image, hasFrame: !!data.frame });
             
             if (imgRef.current) {
               // Check for both 'image' and 'frame' fields (support different backend formats)
@@ -85,24 +168,47 @@ const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval
       };
 
       ws.onerror = (error) => {
+        if (!isMountedRef.current) return;
         console.error('WebSocket error:', error);
         setError('WebSocket connection error');
         setWsConnected(false);
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setWsConnected(false);
+      ws.onclose = (event) => {
+        if (!isMountedRef.current) return;
         
-        // Auto-reconnect if playing and not manually closed
-        if (isPlaying && useWebSocket) {
+        console.log('WebSocket disconnected', { 
+          code: event.code, 
+          reason: event.reason,
+          wasClean: event.wasClean,
+          intentionallyClosed: isIntentionallyClosingRef.current 
+        });
+        
+        setWsConnected(false);
+        wsRef.current = null;
+        
+        // Only auto-reconnect if:
+        // 1. Component is still mounted
+        // 2. We're still playing
+        // 3. WebSocket is enabled
+        // 4. We didn't intentionally close it
+        if (
+          isMountedRef.current &&
+          isPlayingRef.current &&
+          useWebSocketRef.current &&
+          !isIntentionallyClosingRef.current
+        ) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
           reconnectAttemptsRef.current++;
           console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})...`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
-            connectWebSocket();
+            if (isMountedRef.current && isPlayingRef.current && useWebSocketRef.current) {
+              connectWebSocket.current();
+            }
           }, delay);
+        } else {
+          reconnectAttemptsRef.current = 0;
         }
       };
     } catch (err) {
@@ -110,28 +216,107 @@ const CCTVFeed = ({ channelName, streamUrl, streamType = 'auto', refreshInterval
       setError('Failed to connect WebSocket');
       setWsConnected(false);
     }
-  }, [useWebSocket, wsUrl, isPlaying]);
+  }).current;
 
-  // WebSocket lifecycle
+  // WebSocket lifecycle - only depends on useWebSocket, isPlaying, and cameraId
   useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Update refs immediately before checking
+    useWebSocketRef.current = useWebSocket;
+    cameraIdRef.current = cameraId;
+    wsUrlRef.current = wsUrl;
+    isPlayingRef.current = isPlaying;
+    
     if (useWebSocket && isPlaying) {
-      connectWebSocket();
-    } else if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setWsConnected(false);
-    }
-
-    return () => {
+      // Ensure cameraId is set before connecting
+      if (!cameraId && !wsUrl) {
+        console.error('WebSocket connection requires cameraId or wsUrl', {
+          cameraId,
+          wsUrl,
+          channelName,
+          cameraIdRef: cameraIdRef.current
+        });
+        setError('Camera ID is required for WebSocket connection');
+        return;
+      }
+      
+      // Small delay to ensure refs are set and avoid rapid reconnections
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current && useWebSocketRef.current && isPlayingRef.current) {
+          // Double-check cameraId is available
+          if (!cameraIdRef.current && !wsUrlRef.current) {
+            console.error('CameraId still not available after delay');
+            return;
+          }
+          
+          console.log('Attempting WebSocket connection with:', {
+            cameraId: cameraIdRef.current,
+            wsUrl: wsUrlRef.current,
+            useWebSocket: useWebSocketRef.current,
+            channelName
+          });
+          connectWebSocket();
+        }
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        // Cleanup: intentionally close when dependencies change
+        isIntentionallyClosingRef.current = true;
+        if (wsRef.current) {
+          try {
+            wsRef.current.close();
+          } catch (e) {
+            // Ignore errors
+          }
+          wsRef.current = null;
+        }
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+    } else {
+      // Intentionally close if not playing or WebSocket disabled
+      isIntentionallyClosingRef.current = true;
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.close();
+        } catch (e) {
+          // Ignore errors
+        }
+        wsRef.current = null;
+        setWsConnected(false);
+      }
+      // Clear any pending reconnection
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    }
+  }, [useWebSocket, isPlaying, cameraId, wsUrl, channelName]); // Include cameraId and wsUrl in dependencies
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      isIntentionallyClosingRef.current = true;
+      
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch (e) {
+          // Ignore errors
+        }
         wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
-  }, [useWebSocket, isPlaying, connectWebSocket]);
+  }, []);
 
   // Ensure image element is ready for WebSocket frames
   useEffect(() => {

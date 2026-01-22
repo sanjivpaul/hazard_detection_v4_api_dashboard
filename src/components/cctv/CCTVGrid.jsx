@@ -7,12 +7,18 @@ import { API_BASE_URL, API_ENDPOINTS } from '../../utils/constants';
 const channels = [
   { 
     id: 1, 
-    name: 'Channel 1 - Live Feed', 
+    name: 'Channel 1', 
+    cameraId: 'channel_1', // Camera ID for WebSocket endpoint
     streamUrl: `${API_BASE_URL}${API_ENDPOINTS.VIDEO}`,
     useWebSocket: true, // Enable WebSocket streaming
   },
-  // Add more channels here as needed
-  // { id: 2, name: 'Channel 2 - Parking Lot', streamUrl: `${API_BASE_URL}${API_ENDPOINTS.VIDEO}?channel=2`, useWebSocket: false },
+  { 
+    id: 2, 
+    name: 'Channel 2', 
+    cameraId: 'channel_2', // Camera ID for WebSocket endpoint
+    streamUrl: `${API_BASE_URL}${API_ENDPOINTS.VIDEO}`,
+    useWebSocket: true, // Enable WebSocket streaming
+  },
 ];
 
 const CCTVGrid = () => {
@@ -72,6 +78,7 @@ const CCTVGrid = () => {
               streamUrl={channel.streamUrl}
               streamType="auto"
               useWebSocket={channel.useWebSocket || false}
+              cameraId={channel.cameraId}
             />
           </div>
         ))}
