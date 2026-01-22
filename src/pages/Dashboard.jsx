@@ -1,11 +1,46 @@
-import { AlertTriangle, Video, Activity, TrendingUp, Clock, Play, Power } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle, Video, Activity, TrendingUp, Clock, Play, Power, Camera } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLogs } from '../hooks/useLogs';
 import { useDetectionInterval, DETECTION_INTERVAL_LABELS } from '../hooks/useDetectionInterval';
 import { format } from 'date-fns';
 
+// Available cameras for detection
+const AVAILABLE_CAMERAS = [
+  { id: 'channel_1', name: 'Channel 1' },
+  { id: 'channel_2', name: 'Channel 2' },
+];
+
+const CAMERA_STORAGE_KEY = 'hazard_detection_camera';
+
 const Dashboard = () => {
   const { hazards, loading: hazardsLoading } = useLogs();
+  
+  // Get initial camera from localStorage or default to channel_1
+  const getInitialCamera = () => {
+    try {
+      const stored = localStorage.getItem(CAMERA_STORAGE_KEY);
+      if (stored && AVAILABLE_CAMERAS.find(c => c.id === stored)) {
+        return stored;
+      }
+    } catch (e) {
+      console.warn('Failed to read camera from localStorage:', e);
+    }
+    return 'channel_1'; // Default to channel_1
+  };
+  
+  const [selectedCamera, setSelectedCamera] = useState(getInitialCamera);
+  
+  // Save camera selection to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(CAMERA_STORAGE_KEY, selectedCamera);
+      console.log('Saved camera selection to localStorage:', selectedCamera);
+    } catch (e) {
+      console.warn('Failed to save camera selection to localStorage:', e);
+    }
+  }, [selectedCamera]);
+  
   const {
     interval: detectionInterval,
     setInterval: setDetectionInterval,
@@ -17,7 +52,7 @@ const Dashboard = () => {
     manualTrigger,
     intervalLabel,
     availableIntervals,
-  } = useDetectionInterval();
+  } = useDetectionInterval(selectedCamera);
 
   // Calculate statistics from real data
   const stats = [
@@ -253,6 +288,29 @@ const Dashboard = () => {
           
           {/* Detection Interval Selector */}
           <div className="space-y-4">
+            {/* Camera Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <Camera size={16} className="inline mr-2" />
+                Camera Channel
+              </label>
+              <select
+                value={selectedCamera}
+                onChange={(e) => setSelectedCamera(e.target.value)}
+                disabled={isDetecting}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {AVAILABLE_CAMERAS.map((camera) => (
+                  <option key={camera.id} value={camera.id}>
+                    {camera.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Select which camera channel to use for hazard detection
+              </p>
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Detection Interval
@@ -292,6 +350,7 @@ const Dashboard = () => {
                       <>
                         <span className="text-green-600 dark:text-green-400">Active</span>
                         <span className="text-gray-500 dark:text-gray-400 ml-2">• {intervalLabel}</span>
+                        <span className="text-gray-500 dark:text-gray-400 ml-2">• {AVAILABLE_CAMERAS.find(c => c.id === selectedCamera)?.name || selectedCamera}</span>
                       </>
                     ) : (
                       <span className="text-gray-500 dark:text-gray-400">Inactive</span>

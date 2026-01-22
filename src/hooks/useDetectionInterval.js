@@ -23,8 +23,9 @@ const ENABLED_STORAGE_KEY = 'hazard_detection_enabled';
 
 /**
  * Custom hook for managing hazard detection intervals
+ * @param {string} cameraId - The camera ID to use for detection (e.g., 'channel_1', 'channel_2')
  */
-const useDetectionInterval = () => {
+const useDetectionInterval = (cameraId = 'channel_1') => {
   // Get initial interval from localStorage or default to '5min'
   const getInitialInterval = () => {
     try {
@@ -60,6 +61,13 @@ const useDetectionInterval = () => {
   const timeoutRef = useRef(null);
   const initialTimeoutRef = useRef(null);
   const isDetectingRef = useRef(false); // Use ref to track detection state
+  const cameraIdRef = useRef(cameraId); // Store cameraId in ref to avoid stale closures
+
+  // Update cameraId ref when it changes
+  useEffect(() => {
+    cameraIdRef.current = cameraId;
+    console.log('Camera ID updated in hook:', cameraId);
+  }, [cameraId]);
 
   // Function to trigger detection
   const triggerDetection = useCallback(async () => {
@@ -69,14 +77,23 @@ const useDetectionInterval = () => {
       return;
     }
 
+    // Get current cameraId from ref
+    const currentCameraId = cameraIdRef.current;
+    if (!currentCameraId) {
+      console.error('Camera ID is not set, cannot trigger detection');
+      setError('Camera ID is required for detection');
+      return null;
+    }
+
     try {
       isDetectingRef.current = true;
       setIsDetecting(true);
       setError(null);
       console.log('Triggering hazard detection...');
-      console.log('API endpoint: /api/v1/detect');
+      console.log('API endpoint: /api/v1/detect/' + currentCameraId);
+      console.log('Camera ID:', currentCameraId);
       
-      const response = await detectionAPI.detect();
+      const response = await detectionAPI.detect(currentCameraId);
       setLastDetection(new Date());
       
       console.log('Detection completed successfully:', response);
@@ -89,6 +106,7 @@ const useDetectionInterval = () => {
         message: err.message,
         stack: err.stack,
         name: err.name,
+        cameraId: currentCameraId,
       });
       // Don't throw - just set error state
       return null;

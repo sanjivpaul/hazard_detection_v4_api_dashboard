@@ -114,10 +114,17 @@ export const logsAPI = {
  * Detection API methods
  */
 export const detectionAPI = {
-  detect: async () => {
-    console.log('detectionAPI.detect() called');
+  detect: async (cameraId) => {
+    console.log('detectionAPI.detect() called with cameraId:', cameraId);
+    
+    // Validate cameraId
+    if (!cameraId) {
+      throw new Error('Camera ID is required for detection');
+    }
+    
     try {
-      const result = await apiRequest('/detect', { method: 'POST' });
+      // Endpoint format: /detect/{camera_id}
+      const result = await apiRequest(`/detect/${cameraId}`, { method: 'POST' });
       console.log('detectionAPI.detect() success:', result);
       return result;
     } catch (error) {
