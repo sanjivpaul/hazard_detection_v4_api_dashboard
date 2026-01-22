@@ -133,6 +133,8 @@ export const useLogs = () => {
                   confidence: hazardData.confidence || 0,
                   description: hazardData.description || "",
                   image_path: imagePath,
+                  camera_id: hazardData.camera_id || null,
+                  kapa_details: hazardData.kapa_details || null,
                   raw: hazardData,
                 };
 
@@ -182,9 +184,9 @@ export const useLogs = () => {
           }
         });
 
-        // Convert map to array and filter to only show hazards with image_path
+        // Convert map to array - show all hazards (not just ones with images)
+        // This allows pagination to work properly and show all detected hazards
         const parsedHazards = Array.from(hazardMap.values())
-          .filter((hazard) => hazard.image_path !== null) // Only show hazards with images
           .sort((a, b) => {
             // Sort by timestamp (newest first)
             return new Date(b.timestamp) - new Date(a.timestamp);

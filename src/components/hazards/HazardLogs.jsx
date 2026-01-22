@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Search, Download } from "lucide-react";
+import { AlertTriangle, Search, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, parse } from "date-fns";
 import { useLogs } from "../../hooks/useLogs";
 
@@ -16,6 +16,8 @@ const statusColors = {
   Resolved: "bg-green-500",
 };
 
+const ITEMS_PER_PAGE = 10;
+
 const HazardLogs = () => {
   const { hazards, loading, error } = useLogs();
   console.log("hazards===>", hazards);
@@ -24,6 +26,7 @@ const HazardLogs = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [severityFilter, setSeverityFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Transform log hazards to match table structure
   const formattedHazards = useMemo(() => {
@@ -84,6 +87,17 @@ const HazardLogs = () => {
     });
   }, [formattedHazards, searchTerm, severityFilter, statusFilter]);
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredHazards.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedHazards = filteredHazards.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, severityFilter, statusFilter]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -95,11 +109,13 @@ const HazardLogs = () => {
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {loading
               ? "Loading hazards..."
-              : `${hazards.length} hazard${
-                  hazards.length !== 1 ? "s" : ""
-                } detected`}
+              : `${filteredHazards.length} hazard${
+                  filteredHazards.length !== 1 ? "s" : ""
+                } found`}
             {filteredHazards.length !== hazards.length &&
-              ` (${filteredHazards.length} shown)`}
+              ` (of ${hazards.length} total)`}
+            {totalPages > 1 &&
+              ` • Page ${currentPage} of ${totalPages}`}
           </p>
         </div>
         <button
@@ -206,7 +222,7 @@ const HazardLogs = () => {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
-                {filteredHazards.length === 0 ? (
+                {paginatedHazards.length === 0 ? (
                   <tr>
                     <td
                       colSpan="7"
@@ -220,7 +236,7 @@ const HazardLogs = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredHazards.map((hazard) => (
+                  paginatedHazards.map((hazard) => (
                     <tr
                       key={hazard.id}
                       onClick={() => navigate(`/hazards/${hazard.id}`)}
@@ -292,6 +308,69 @@ const HazardLogs = () => {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {!loading && !error && filteredHazards.length > 0 && totalPages > 1 && (
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredHazards.length)} of{" "}
+              {filteredHazards.length} hazards
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <ChevronLeft size={18} />
+                Previous
+              </button>
+              
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    if (page === 1 || page === totalPages) return true;
+                    if (Math.abs(page - currentPage) <= 1) return true;
+                    return false;
+                  })
+                  .map((page, index, array) => {
+                    // Add ellipsis if there's a gap
+                    const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
+                    return (
+                      <div key={page} className="flex items-center gap-1">
+                        {showEllipsisBefore && (
+                          <span className="px-2 text-gray-500 dark:text-gray-400">...</span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-2 text-sm font-medium rounded-lg transition ${
+                            currentPage === page
+                              ? "bg-primary-600 text-white"
+                              : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Next
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

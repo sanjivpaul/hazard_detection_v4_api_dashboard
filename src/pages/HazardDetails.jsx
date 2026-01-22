@@ -6,6 +6,10 @@ import {
   Gauge,
   FileText,
   Image as ImageIcon,
+  Camera,
+  CheckCircle,
+  AlertCircle,
+  Shield,
 } from "lucide-react";
 import { useLogs } from "../hooks/useLogs";
 import { format } from "date-fns";
@@ -202,10 +206,111 @@ const HazardDetails = () => {
                 Description
               </h2>
             </div>
-            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+            <div className="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
               {hazard.description || "No description available."}
-            </p>
+            </div>
           </div>
+
+          {/* KAPA Details */}
+          {hazard.kapa_details && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Shield
+                  size={20}
+                  className="text-gray-600 dark:text-gray-400"
+                />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  CAPA (Corrective and Preventive Action)
+                </h2>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Immediate Action */}
+                {hazard.kapa_details.immediate_action && (
+                  <div className="border-l-4 border-red-500 pl-4 py-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertCircle
+                        size={18}
+                        className="text-red-600 dark:text-red-400"
+                      />
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        Immediate Action
+                      </h3>
+                    </div>
+                    <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                      {hazard.kapa_details.immediate_action}
+                    </div>
+                  </div>
+                )}
+
+                {/* Root Cause */}
+                {hazard.kapa_details.root_cause && (
+                  <div className="border-l-4 border-yellow-500 pl-4 py-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertCircle
+                        size={18}
+                        className="text-yellow-600 dark:text-yellow-400"
+                      />
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        Root Cause
+                      </h3>
+                    </div>
+                    <div className="text-gray-700 dark:text-gray-300">
+                      {typeof hazard.kapa_details.root_cause === 'string' ? (
+                        <ul className="list-disc list-inside space-y-1">
+                          {hazard.kapa_details.root_cause
+                            .split('\n')
+                            .filter(line => line.trim())
+                            .map((line, index) => (
+                              <li key={index} className="whitespace-pre-wrap">
+                                {line.trim().replace(/^-\s*/, '')}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <div className="whitespace-pre-wrap">
+                          {hazard.kapa_details.root_cause}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preventive Action */}
+                {hazard.kapa_details.preventive_action && (
+                  <div className="border-l-4 border-green-500 pl-4 py-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle
+                        size={18}
+                        className="text-green-600 dark:text-green-400"
+                      />
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        Preventive Action
+                      </h3>
+                    </div>
+                    <div className="text-gray-700 dark:text-gray-300">
+                      {typeof hazard.kapa_details.preventive_action === 'string' ? (
+                        <ul className="list-disc list-inside space-y-1">
+                          {hazard.kapa_details.preventive_action
+                            .split('\n')
+                            .filter(line => line.trim())
+                            .map((line, index) => (
+                              <li key={index} className="whitespace-pre-wrap">
+                                {line.trim().replace(/^-\s*/, '')}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <div className="whitespace-pre-wrap">
+                          {hazard.kapa_details.preventive_action}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar - Hazard Information */}
@@ -303,6 +408,24 @@ const HazardDetails = () => {
                         ></div>
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Camera ID */}
+              {hazard.camera_id && (
+                <div className="flex items-start gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <Camera
+                    size={20}
+                    className="text-gray-400 flex-shrink-0 mt-0.5"
+                  />
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Camera Channel
+                    </p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                      {hazard.camera_id.replace('_', ' ')}
+                    </p>
                   </div>
                 </div>
               )}
